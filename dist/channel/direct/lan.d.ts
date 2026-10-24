@@ -4,6 +4,8 @@ export interface DirectChannelOptions {
     /** PSK lookup by client TLS identity; an undefined result fails the handshake. */
     pskForIdentity: (identity: string) => Buffer | undefined;
     log?: (level: 'debug' | 'info' | 'warn' | 'error', message: string) => void;
+    /** Fired for rejected client handshakes (rate-limited) — evidence of probes. */
+    onClientRejected?: (reason: string) => void;
 }
 /** Route shape: `/rpc/<identity>` where identity is an offerId or deviceId. */
 export declare function extractIdentity(path: string): string | undefined;
@@ -22,11 +24,16 @@ export declare class DirectChannel {
     private readonly port;
     private readonly pskForIdentity;
     private readonly log;
+    private readonly onClientRejected;
+    private rejectedSince;
+    private rejectedCount;
     private tlsServer;
     private httpServer;
     private readonly sockets;
     private handler;
     constructor(options: DirectChannelOptions);
+    /** Report rejected handshakes at most once per minute, with a count. */
+    private rejectSeen;
     advertise(): Array<{
         host: string;
         port: number;

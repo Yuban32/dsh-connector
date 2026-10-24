@@ -1,4 +1,6 @@
 import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { writeJsonFileAtomic } from './storage/json-file.js';
 import { asLogger, onDispose } from './context.js';
 import { resolveConfig } from './config.js';
 import { defaultDataDir } from './paths.js';
@@ -38,6 +40,7 @@ export async function createRuntime(config, log) {
         port: config.port,
         pskForIdentity: (identity) => gate.pskForIdentity(identity),
         log: (level, message) => log[level](`[direct] ${message}`),
+        onClientRejected: (reason) => diagnostics.push('channel.client-rejected', { reason }),
     });
     const router = createRouter({
         'enroll.claim': async (params, identity) => {
@@ -166,7 +169,16 @@ export async function apply(ctx, cordisConfig) {
         log.warn(`${PLUGIN_NAME}: runtime already active; leaving the existing instance in place`);
         return;
     }
-    const runtime = await createRuntime(config, log);
+    let runtime;
+    try {
+        runtime = await createRuntime(config, log);
+    }
+    catch (error) {
+        // Activation must always leave evidence on disk, even when the host only
+        // surfaces a one-line warning.
+        persistActivationError(config, error);
+        throw error;
+    }
     activeRuntime = runtime;
     log.info(`${PLUGIN_NAME} ${PLUGIN_VERSION}: started (channel port ${runtime.direct.actualPort()})`);
     const cleanup = () => {
@@ -176,6 +188,21 @@ export async function apply(ctx, cordisConfig) {
     if (!exitHookInstalled) {
         exitHookInstalled = true;
         process.once('exit', cleanup);
+    }
+}
+/** Best-effort breadcrumb so an opaque "did not activate" always has a cause. */
+function persistActivationError(config, error) {
+    try {
+        const dir = config.dataDir ?? defaultDataDir();
+        mkdirSync(dir, { recursive: true });
+        writeJsonFileAtomic(join(dir, 'activation-error.json'), {
+            v: 1,
+            at: new Date().toISOString(),
+            error: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : String(error),
+        });
+    }
+    catch {
+        // Nothing else to do — the host log is the remaining trail.
     }
 }
 function requireString(params, key) {

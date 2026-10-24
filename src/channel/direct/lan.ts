@@ -10,6 +10,8 @@ export interface DirectChannelOptions {
   /** PSK lookup by client TLS identity; an undefined result fails the handshake. */
   pskForIdentity: (identity: string) => Buffer | undefined;
   log?: (level: 'debug' | 'info' | 'warn' | 'error', message: string) => void;
+  /** Fired for rejected client handshakes (rate-limited) — evidence of probes. */
+  onClientRejected?: (reason: string) => void;
 }
 
 const MAX_BODY_BYTES = 64 * 1024;
@@ -36,6 +38,9 @@ export class DirectChannel {
   private readonly port: number;
   private readonly pskForIdentity: DirectChannelOptions['pskForIdentity'];
   private readonly log: NonNullable<DirectChannelOptions['log']>;
+  private readonly onClientRejected: DirectChannelOptions['onClientRejected'];
+  private rejectedSince = 0;
+  private rejectedCount = 0;
   private tlsServer: tls.Server | undefined;
   private httpServer: http.Server | undefined;
   private readonly sockets = new Set<tls.TLSSocket>();
@@ -45,6 +50,17 @@ export class DirectChannel {
     this.port = options.port;
     this.pskForIdentity = options.pskForIdentity;
     this.log = options.log ?? (() => {});
+    this.onClientRejected = options.onClientRejected;
+  }
+
+  /** Report rejected handshakes at most once per minute, with a count. */
+  private rejectSeen(reason: string): void {
+    const now = Date.now();
+    this.rejectedCount += 1;
+    if (now - this.rejectedSince < 60_000) return;
+    this.rejectedSince = now;
+    this.onClientRejected?.(`rejected handshakes: ${this.rejectedCount}x, last: ${reason}`);
+    this.rejectedCount = 0;
   }
 
   advertise(): Array<{ host: string; port: number }> {
@@ -89,7 +105,12 @@ export class DirectChannel {
       (socket) => {
         this.sockets.add(socket);
         socket.on('close', () => this.sockets.delete(socket));
-        socket.on('error', (error) => this.log('debug', `socket error: ${error.message}`));
+        socket.on('error', (error) => {
+          // TLS alert from a client without the right PSK (browser probes,
+          // port scanners) — expected by design; keep one trace per minute.
+          this.rejectSeen(error.message);
+          this.log('debug', `client handshake rejected: ${error.message}`);
+        });
         // Hand the raw TLS socket to the HTTP server as a plain connection.
         httpServer.emit('connection', socket);
       },

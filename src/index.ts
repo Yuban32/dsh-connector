@@ -1,16 +1,18 @@
 import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 
+import { writeJsonFileAtomic } from './storage/json-file.js';
 import { asLogger, DscLogger, DscPluginContext, onDispose } from './context.js';
 import { resolveConfig, DscConfig } from './config.js';
 import { defaultDataDir } from './paths.js';
 import { loadOrCreateHostKeys } from './host/host-keys.js';
 import { DeviceVault } from './devices/vault.js';
-import { Gate, GateError } from './enroll/gate.js';
+import { Gate } from './enroll/gate.js';
 import { ConsoleServer, ConsoleState } from './console/console.js';
 import { Diagnostics, diagnosticsFile } from './diagnostics.js';
 import { PLUGIN_NAME, PLUGIN_VERSION, OFFER_SCHEME, WIRE_VERSION } from './metadata.js';
 import { createRouter, decodeEnvelope, encodeErr, encodeOk, errorPayload, RpcError } from './channel/rpc.js';
-import { DirectChannel, extractIdentity } from './channel/direct/lan.js';
+import { DirectChannel } from './channel/direct/lan.js';
 import type { ChannelRequest, ChannelResponse } from './channel/types.js';
 
 export { PLUGIN_NAME as name, PLUGIN_VERSION, WIRE_VERSION, OFFER_SCHEME } from './metadata.js';
@@ -69,6 +71,7 @@ export async function createRuntime(config: DscConfig, log: DscLogger): Promise<
     port: config.port,
     pskForIdentity: (identity) => gate.pskForIdentity(identity),
     log: (level, message) => log[level](`[direct] ${message}`),
+    onClientRejected: (reason) => diagnostics.push('channel.client-rejected', { reason }),
   });
 
   const router = createRouter({
@@ -205,7 +208,15 @@ export async function apply(ctx: DscPluginContext, cordisConfig?: Partial<DscCon
     log.warn(`${PLUGIN_NAME}: runtime already active; leaving the existing instance in place`);
     return;
   }
-  const runtime = await createRuntime(config, log);
+  let runtime: RuntimeHandles;
+  try {
+    runtime = await createRuntime(config, log);
+  } catch (error) {
+    // Activation must always leave evidence on disk, even when the host only
+    // surfaces a one-line warning.
+    persistActivationError(config, error);
+    throw error;
+  }
   activeRuntime = runtime;
   log.info(`${PLUGIN_NAME} ${PLUGIN_VERSION}: started (channel port ${runtime.direct.actualPort()})`);
 
@@ -216,6 +227,21 @@ export async function apply(ctx: DscPluginContext, cordisConfig?: Partial<DscCon
   if (!exitHookInstalled) {
     exitHookInstalled = true;
     process.once('exit', cleanup);
+  }
+}
+
+/** Best-effort breadcrumb so an opaque "did not activate" always has a cause. */
+function persistActivationError(config: DscConfig, error: unknown): void {
+  try {
+    const dir = config.dataDir ?? defaultDataDir();
+    mkdirSync(dir, { recursive: true });
+    writeJsonFileAtomic(join(dir, 'activation-error.json'), {
+      v: 1,
+      at: new Date().toISOString(),
+      error: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : String(error),
+    });
+  } catch {
+    // Nothing else to do — the host log is the remaining trail.
   }
 }
 

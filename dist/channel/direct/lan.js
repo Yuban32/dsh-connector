@@ -23,6 +23,9 @@ export class DirectChannel {
     port;
     pskForIdentity;
     log;
+    onClientRejected;
+    rejectedSince = 0;
+    rejectedCount = 0;
     tlsServer;
     httpServer;
     sockets = new Set();
@@ -31,6 +34,17 @@ export class DirectChannel {
         this.port = options.port;
         this.pskForIdentity = options.pskForIdentity;
         this.log = options.log ?? (() => { });
+        this.onClientRejected = options.onClientRejected;
+    }
+    /** Report rejected handshakes at most once per minute, with a count. */
+    rejectSeen(reason) {
+        const now = Date.now();
+        this.rejectedCount += 1;
+        if (now - this.rejectedSince < 60_000)
+            return;
+        this.rejectedSince = now;
+        this.onClientRejected?.(`rejected handshakes: ${this.rejectedCount}x, last: ${reason}`);
+        this.rejectedCount = 0;
     }
     advertise() {
         const hosts = [];
@@ -71,7 +85,12 @@ export class DirectChannel {
         }, (socket) => {
             this.sockets.add(socket);
             socket.on('close', () => this.sockets.delete(socket));
-            socket.on('error', (error) => this.log('debug', `socket error: ${error.message}`));
+            socket.on('error', (error) => {
+                // TLS alert from a client without the right PSK (browser probes,
+                // port scanners) — expected by design; keep one trace per minute.
+                this.rejectSeen(error.message);
+                this.log('debug', `client handshake rejected: ${error.message}`);
+            });
             // Hand the raw TLS socket to the HTTP server as a plain connection.
             httpServer.emit('connection', socket);
         });

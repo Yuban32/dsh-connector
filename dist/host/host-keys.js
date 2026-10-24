@@ -1,6 +1,7 @@
 import { createHash, createPublicKey, generateKeyPairSync } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { writeJsonFileAtomic } from '../storage/json-file.js';
 const HOST_KEY_FILE = 'host-key.json';
 /** Fingerprint over the raw 32-byte Ed25519 public key. */
 export function publicKeyFp(publicKeyPem) {
@@ -36,9 +37,10 @@ export function loadOrCreateHostKeys(dir) {
     const existing = safeRead(file);
     if (existing)
         return existing;
-    mkdirSync(dir, { recursive: true });
     const created = generate();
-    writeFileSync(file, JSON.stringify(created, null, 2), { mode: 0o600 });
+    // Atomic write with EPERM retry — a fresh key file is exactly what
+    // real-time scanners grab first, and a throw here would kill activation.
+    writeJsonFileAtomic(file, created, 2);
     return created;
 }
 function safeRead(file) {
