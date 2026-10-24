@@ -1,0 +1,11 @@
+node_modules/
+.test/
+*.tsbuildinfo
+*.tgz
+# RN-on-HarmonyOS 产物与包管理器领地（项目目录架构设计.md §5/§7）
+oh_modules/
+.cxx/
+.hvigor/
+.idea/
+src/harmony/entry/build/
+*.log
