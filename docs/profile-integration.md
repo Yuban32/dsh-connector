@@ -100,14 +100,18 @@ Cordis 节点 config 在 profile 的 `cordis.patch.yml` 里按 id 覆盖：
 
 ## 卸载
 
-UI 卸载（内置插件页）与手动步骤等效，但语义上有三点要知道：
+UI 卸载（内置插件页）与手动步骤等效，语义上有几点要知道：
 
-- **UI 卸载不实时卸载渲染进程入口**：依赖、bundles 登记、patch 禁用当场完成，
-  但 tab 要**重启 harness 后才消失**（web entry 不做运行中卸载）。
-- 卸载后 profile 的 `cordis.patch.yml` 会留下 `- id: ds-connector` + `disabled: true`。
-  `pnpm push` 检测到它会拒绝执行（避免把已卸载的入口悄悄装回去）；确认要装回时在
-  UI 里重新启用，或设 `DSC_PUSH_FORCE=1`。
-- UI 卸载对 `link:` 安装不清 `node_modules/@ds-connector` 符号链接（残留无害但建议清掉）。
+- **正常路径是热移除**：卸载 = 改 package.json（依赖 + bundles）→ `pnpm remove` →
+  HMR 热重组 → 渲染进程经 SSE 收到新启动图并即时卸载对应 UI，无需重启。若当次会话
+  SSE 图同步未生效（流断开 / release 不匹配），tab 会残留到**下次重启**才消失。
+- 行级禁用开关（非卸载动作）会往 profile 的 `cordis.patch.yml` 写 `- id: ds-connector`
+  + `disabled: true`；插件行不存在时该 override 惰性无害。`pnpm push` 检测到它会拒绝
+  执行（避免往禁用状态上静默重装）；确认要装回时在 UI 重新启用（或删掉该条），或设
+  `DSC_PUSH_FORCE=1`。
+- node_modules 残留（`link:` 安装的 symlink、空 scope 目录）是宿主容忍的缓存垃圾：
+  启动组合只认 package.json 的 `dsh.profile.bundles`，绝不因目录存在而激活入口；
+  建议清掉保持整洁。
 
 手动卸载（最彻底）：
 
