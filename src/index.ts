@@ -173,7 +173,18 @@ export async function createRuntime(config: DscConfig, log: DscLogger): Promise<
     lastError: direct.lastError,
   });
 
-  const consoleServer = new ConsoleServer({ port: config.consolePort, log, state, openOffer, confirm, suspend });
+  const consoleServer = new ConsoleServer({
+    port: config.consolePort,
+    log,
+    state,
+    openOffer,
+    confirm,
+    suspend,
+    onClientError: (info) => {
+      log.error(`renderer slot entry crashed (${info.slotKey ?? 'unknown slot'}): ${info.message}`);
+      diagnostics.push('client.entryError', { slotKey: info.slotKey, message: info.message, stack: info.stack });
+    },
+  });
   await consoleServer.start();
 
   diagnostics.push('runtime.start', {

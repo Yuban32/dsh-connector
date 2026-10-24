@@ -81,6 +81,15 @@ export class ConsoleServer {
                     return this.json(res, 400, { error: 'deviceId required' });
                 return this.json(res, 200, this.options.suspend(deviceId));
             }
+            if (req.method === 'POST' && url === '/client-error') {
+                const body = await readBody(req);
+                const info = readJsonObject(body, ['slotKey', 'message', 'stack']);
+                const message = info.message;
+                if (!message)
+                    return this.json(res, 400, { error: 'message required' });
+                this.options.onClientError?.({ slotKey: info.slotKey, stack: info.stack, message });
+                return this.json(res, 200, { ok: true });
+            }
             this.json(res, 404, { error: 'not-found' });
         }
         catch (error) {
@@ -109,6 +118,21 @@ function readString(body, key) {
     }
     catch {
         return undefined;
+    }
+}
+function readJsonObject(body, keys) {
+    try {
+        const parsed = JSON.parse(body.toString('utf8'));
+        const out = {};
+        for (const key of keys) {
+            const value = parsed[key];
+            if (typeof value === 'string' && value !== '')
+                out[key] = value;
+        }
+        return out;
+    }
+    catch {
+        return {};
     }
 }
 //# sourceMappingURL=console.js.map

@@ -36,6 +36,12 @@ export interface ConsoleOptions {
         deviceId: string;
         state: string;
     };
+    /** Forensics sink: the client UI forwards renderer slot-entry crashes here. */
+    onClientError?: (info: {
+        slotKey?: string;
+        message: string;
+        stack?: string;
+    }) => void;
 }
 /**
  * Loopback-only management surface. It stands in for the harness UI in v1 and

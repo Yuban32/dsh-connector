@@ -55,7 +55,8 @@ function DeviceRow(props) {
 }
 
 function TabComponent() {
-  const t = t0();
+  const dict = t0();
+  const t = (key) => dict[key];
   const [state, setState] = react.useState(null);
   const [offer, setOffer] = react.useState(null);
   const [error, setError] = react.useState('');
@@ -101,19 +102,38 @@ function TabComponent() {
         }, copied || t('copy')))) : null,
     h('div', null,
       h('div', { style: { fontWeight: 600, fontSize: '14px', margin: '4px 0' } }, t('devices')),
-      !state || state.devices.length === 0 ? h('div', { style: { color: 'var(--dsw-alias-label-tertiary)', fontSize: '13px' } }, t('none')) :
+      !state || !Array.isArray(state.devices) || state.devices.length === 0 ? h('div', { style: { color: 'var(--dsw-alias-label-tertiary)', fontSize: '13px' } }, t('none')) :
         h('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px' } },
           state.devices.map((d) => h(DeviceRow, { key: d.deviceId, device: d, t, onChange: refresh, onError: (e) => setError(String(e)) })))),
   );
 }
 
 function apply(ctx) {
-  ctx.slots.inject('settings.plugins.tab', () => ctx.slots.register({
-    name: 'settings.plugins.tab',
-    id: 'ds-connector',
-    order: 200,
-    label: () => 'DS Connector',
-  }, TabComponent));
+  // Crash forensics: when a slot entry throws during render the host paints an
+  // empty panel and abdicates the entry (tab label stays, panel goes blank).
+  // Forward the stack to the loopback console so diagnostics.json keeps a
+  // breadcrumb — no DevTools needed to investigate.
+  try {
+    ctx.slots.onEntryError?.((slotKey, entry, error) => {
+      if (slotKey !== 'settings.plugins.tab') return;
+      call('/client-error', {
+        slotKey,
+        message: String((error && error.message) || error),
+        stack: error && error.stack,
+      }).catch(() => { /* console down — nothing else to do */ });
+    });
+  } catch { /* supervisor surface unavailable on this host */ }
+  // settings.plugins.tab is the current owner's key; plugins.tab covers other
+  // host revisions. slots.inject on an undeclared slot simply never fires, so
+  // the extra registration is free where the slot does not exist.
+  for (const slot of ['settings.plugins.tab', 'plugins.tab']) {
+    ctx.slots.inject(slot, () => ctx.slots.register({
+      name: slot,
+      id: 'ds-connector',
+      order: 200,
+      label: () => 'DS Connector',
+    }, TabComponent));
+  }
 }
 
 // Cordis service axis: apply() reads ctx.slots, so the entry must declare the

@@ -18,6 +18,8 @@ export interface ConsoleOptions {
   openOffer: () => { offerId: string; code: string; expiresAt: number; uris: string[] };
   confirm: (offerId: string) => { deviceId: string; name: string };
   suspend: (deviceId: string) => { deviceId: string; state: string };
+  /** Forensics sink: the client UI forwards renderer slot-entry crashes here. */
+  onClientError?: (info: { slotKey?: string; message: string; stack?: string }) => void;
 }
 
 /**
@@ -100,6 +102,14 @@ export class ConsoleServer {
         if (!deviceId) return this.json(res, 400, { error: 'deviceId required' });
         return this.json(res, 200, this.options.suspend(deviceId));
       }
+      if (req.method === 'POST' && url === '/client-error') {
+        const body = await readBody(req);
+        const info = readJsonObject(body, ['slotKey', 'message', 'stack']);
+        const message = info.message;
+        if (!message) return this.json(res, 400, { error: 'message required' });
+        this.options.onClientError?.({ slotKey: info.slotKey, stack: info.stack, message });
+        return this.json(res, 200, { ok: true });
+      }
       this.json(res, 404, { error: 'not-found' });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'unknown failure';
@@ -129,5 +139,19 @@ function readString(body: Buffer, key: string): string | undefined {
     return typeof value === 'string' && value !== '' ? value : undefined;
   } catch {
     return undefined;
+  }
+}
+
+function readJsonObject(body: Buffer, keys: readonly string[]): Record<string, string | undefined> {
+  try {
+    const parsed = JSON.parse(body.toString('utf8')) as Record<string, unknown>;
+    const out: Record<string, string | undefined> = {};
+    for (const key of keys) {
+      const value = parsed[key];
+      if (typeof value === 'string' && value !== '') out[key] = value;
+    }
+    return out;
+  } catch {
+    return {};
   }
 }
