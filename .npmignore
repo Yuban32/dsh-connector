@@ -1,0 +1,7 @@
+# Presence of .npmignore stops packers (npm/pnpm file: installs) from applying
+# the project's .gitignore — which excludes dist/, a published artifact here.
+# Keep this list in sync with .gitignore minus dist/.
+node_modules
+.test
+*.tsbuildinfo
+.claude
