@@ -1,20 +1,26 @@
-import { build } from 'esbuild';
-import { mkdirSync } from 'node:fs';
+#!/usr/bin/env node
+/**
+ * Assemble the harness client bundle: the host's module loader expects an
+ * IIFE whose factory receives a sandboxed `require` and exposes
+ * `module.exports` — the wrapper below provides both, then inlines our
+ * hand-written client source verbatim (it requires react/slots from the
+ * platform module table at runtime; nothing to bundle).
+ */
+import { readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'node:fs';
 
-// The harness web client loads plugin bundles through a global module loader;
-// the wrapper below is the registration shape it expects.
-const banner = 'window.__ModuleLoader__.load({ id: "@ds-connector/connector", factory: (require) => {';
-const footer = '});';
+const banner = [
+  'window.__ModuleLoader__.load({',
+  '  id: "@ds-connector/connector",',
+  '  factory: (require) => {',
+  '    var module = { exports: {} };',
+  '    var exports = module.exports;',
+].join('\n');
+const footer = '  return module.exports;\n});';
 
-mkdirSync('dist', { recursive: true });
-await build({
-  entryPoints: ['client/index.ts'],
-  bundle: true,
-  format: 'iife',
-  platform: 'browser',
-  outfile: 'dist/client.js',
-  banner: { js: banner },
-  footer: { js: footer },
-  logLevel: 'info',
-});
+mkdirSync('dist/client', { recursive: true });
+const source = readFileSync('client/index.js', 'utf8');
+writeFileSync('dist/client.js', banner + '\n' + source + '\n' + footer);
+
+// Handwritten type surface for `@ds-connector/connector/client`.
+copyFileSync('client/index.d.ts', 'dist/client/index.d.ts');
 console.log('client bundle written to dist/client.js');

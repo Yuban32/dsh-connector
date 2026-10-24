@@ -71,6 +71,16 @@ export class ConsoleServer {
 
   private async dispatch(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const url = (req.url ?? '/').split('?')[0];
+    // The harness web UI (different origin) reads this loopback surface; the
+    // server only ever binds 127.0.0.1, so permissive CORS is safe here.
+    res.setHeader('access-control-allow-origin', '*');
+    res.setHeader('access-control-allow-methods', 'GET, POST, OPTIONS');
+    res.setHeader('access-control-allow-headers', 'content-type');
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
     try {
       if (req.method === 'GET' && (url === '/state' || url === '/health')) {
         return this.json(res, 200, this.options.state());

@@ -1,6 +1,6 @@
 {
   "name": "@ds-connector/connector",
-  "version": "0.1.5",
+  "version": "0.2.0",
   "description": "DS Connector — phone enrollment plugin for the DeepSeek Harness desktop app.",
   "type": "module",
   "main": "./dist/index.js",
@@ -30,7 +30,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && tsc -p tsconfig.client.json && node scripts/build-client.mjs",
+    "build": "tsc -p tsconfig.json && node scripts/build-client.mjs",
     "test": "tsc -p tsconfig.json && tsc -p tsconfig.test.json && node --test \".test/*.test.js\" \"tests/naming.test.mjs\"",
     "smoke": "node scripts/smoke-enroll.mjs",
     "push": "node scripts/push.mjs"
@@ -44,7 +44,6 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
-    "esbuild": "^0.25.0",
     "typescript": "^5.7.0"
   },
   "dsh": {
@@ -52,6 +51,7 @@
       "patch": "./cordis.patch.yml"
     },
     "client": {
+      "inject": [],
       "platform": "web"
     }
   }
