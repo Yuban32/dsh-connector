@@ -35,7 +35,33 @@ node "J:/Development/Program Files/Deepseek Harness/resources/runtime/primary-ru
 # 5. 重启 DeepSeek Harness
 ```
 
-## 验证（插件自举证，不依赖 harness 日志）
+## 方式 B：经 GitHub repo URL 分发（多机安装）
+
+git URL 安装的机制：目标机克隆仓库 → **按仓库现状直接打包安装，不执行任何构建**。因此 `dist/` **必须已提交进仓库**（本项目自 0.1.2 起提交），目标机零构建、零工具链依赖。
+
+发布流程（开发机）：
+
+```bash
+pnpm build && pnpm test   # 保证 dist 最新且测试绿
+git add -A && git commit -m "release x.y.z"   # 必须包含 dist 的变更
+git push
+```
+
+**忘记提交 dist 是历史事故的根源**（0.1.1 及之前 dist 被 .gitignore 排除，目标机装到的包缺入口文件，报 ENOENT/ERR_MODULE_NOT_FOUND）。
+
+目标机安装/更新：
+
+```bash
+# 清掉旧拷贝（harness 关闭状态）
+Remove-Item -Recurse -Force "$env:USERPROFILE\.dsh\profiles\desktop\node_modules\@ds-connector"
+# 从 GitHub URL 重装（在 profile 目录下，用 harness 自带 pnpm）
+node "<harness>/resources/runtime/primary-runtime/dependencies/pnpm/bin/pnpm.cjs" add <github 用户>/<仓库>
+# 重启 harness，curl /state 里的 version 应为新版本号
+```
+
+版本号即"内容指纹"：每次发布升版本（package.json + src/metadata.ts 两处），目标机凭 `/state` 的 version 判断装没装对。
+
+
 
 ```bash
 # 1. 数据目录生成 = apply() 已执行（最主要的加载证据）
