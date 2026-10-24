@@ -32,6 +32,15 @@ export interface GateEvents {
   onEvent?: (kind: string, detail?: Record<string, unknown>) => void;
 }
 
+/** Desktop-UI view of the one live offer (open, or claimed and awaiting confirmation). */
+export interface LiveOfferView {
+  offerId: string;
+  expiresAt: number;
+  phase: 'open' | 'claimed';
+  claimedName?: string;
+  claimedKeyFp?: string;
+}
+
 /**
  * Enrollment state machine.
  *
@@ -106,6 +115,26 @@ export class Gate {
       }
     }
     return { status: 'expired' };
+  }
+
+  /** The live offer for the management UI, if any (enrolled offers are done). */
+  currentOffer(): LiveOfferView | undefined {
+    for (const offer of this.offers.values()) {
+      const live = this.liveOffer(offer.offerId);
+      if (!live || (live.phase !== 'open' && live.phase !== 'claimed')) continue;
+      if (live.phase === 'claimed' && live.deviceId) {
+        const device = this.vault.get(live.deviceId);
+        return {
+          offerId: live.offerId,
+          expiresAt: live.expiresAt,
+          phase: 'claimed',
+          claimedName: device?.name,
+          claimedKeyFp: device?.keyFp,
+        };
+      }
+      return { offerId: live.offerId, expiresAt: live.expiresAt, phase: 'open' };
+    }
+    return undefined;
   }
 
   confirm(offerId: string): DeviceRecord {

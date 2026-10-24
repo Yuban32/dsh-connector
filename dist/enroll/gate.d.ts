@@ -26,6 +26,14 @@ export type PollResult = {
 export interface GateEvents {
     onEvent?: (kind: string, detail?: Record<string, unknown>) => void;
 }
+/** Desktop-UI view of the one live offer (open, or claimed and awaiting confirmation). */
+export interface LiveOfferView {
+    offerId: string;
+    expiresAt: number;
+    phase: 'open' | 'claimed';
+    claimedName?: string;
+    claimedKeyFp?: string;
+}
 /**
  * Enrollment state machine.
  *
@@ -52,6 +60,8 @@ export declare class Gate {
     openOffer(): OpenedOffer;
     claim(offerId: string, deviceName: string, keyFp?: string): ClaimResult;
     poll(offerId: string): PollResult;
+    /** The live offer for the management UI, if any (enrolled offers are done). */
+    currentOffer(): LiveOfferView | undefined;
     confirm(offerId: string): DeviceRecord;
     suspend(deviceId: string): DeviceRecord;
     /** PSK lookup used by the channel's TLS layer, keyed by client identity. */

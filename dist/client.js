@@ -13,8 +13,8 @@ const h = react.createElement;
 const CONSOLE = 'http://127.0.0.1:28471';
 const NS = 'ds-connector';
 const DICT = {
-  zh: { title: 'DS Connector 手机入网', status: '运行状态', version: '版本', mode: '信道模式', port: '端口', devices: '已入册设备', none: '暂无设备', refresh: '刷新', offer: '生成入网邀约', revokeTitle: '停用设备', revoke: '停用', confirm: '确认入网', offerCode: '入网码', offerUri: '邀约 URI（手机扫码或粘贴）', copy: '复制', copied: '已复制', err: '无法连接控制台', offerId: '邀约 ID' },
-  en: { title: 'DS Connector Phone Enrollment', status: 'Status', version: 'Version', mode: 'Channel mode', port: 'Port', devices: 'Enrolled devices', none: 'No devices yet', refresh: 'Refresh', offer: 'Create enrollment offer', revokeTitle: 'Suspend device', revoke: 'Suspend', confirm: 'Confirm', offerCode: 'Code', offerUri: 'Offer URI (scan or paste on phone)', copy: 'Copy', copied: 'Copied', err: 'Console unreachable', offerId: 'Offer ID' },
+  zh: { title: 'DS Connector 手机入网', status: '运行状态', version: '版本', mode: '信道模式', port: '端口', devices: '已入册设备', none: '暂无设备', refresh: '刷新', offer: '生成入网邀约', revokeTitle: '停用设备', revoke: '停用', confirm: '确认入网', offerCode: '入网码', offerUri: '邀约 URI（手机扫码或粘贴）', copy: '复制', copied: '已复制', err: '无法连接控制台', offerId: '邀约 ID', offerTitle: '当前邀约', waitingClaim: '等待设备认领…', claimedBy: '设备已认领', expiresIn: '有效期至', scanTip: '手机扫码，或把邀约 URI 粘贴到设备端客户端' },
+  en: { title: 'DS Connector Phone Enrollment', status: 'Status', version: 'Version', mode: 'Channel mode', port: 'Port', devices: 'Enrolled devices', none: 'No devices yet', refresh: 'Refresh', offer: 'Create enrollment offer', revokeTitle: 'Suspend device', revoke: 'Suspend', confirm: 'Confirm', offerCode: 'Code', offerUri: 'Offer URI (scan or paste on phone)', copy: 'Copy', copied: 'Copied', err: 'Console unreachable', offerId: 'Offer ID', offerTitle: 'Active offer', waitingClaim: 'Waiting for a device to claim…', claimedBy: 'Device claimed', expiresIn: 'Expires at', scanTip: 'Scan with the phone, or paste the offer URI into the device client' },
 };
 const t0 = () => (navigator.language || '').toLowerCase().startsWith('zh') ? DICT.zh : DICT.en;
 
@@ -86,6 +86,14 @@ function TabComponent() {
       h(StatusRow, { label: t('mode'), value: state.direct?.mode }),
       h(StatusRow, { label: t('port'), value: state.direct?.port })) : null,
     offer ? h('div', { style: box },
+      h('div', { style: { fontSize: '12px', color: 'var(--dsw-alias-label-tertiary)' } }, t('scanTip')),
+      offer.qr && offer.qr.length > 0 ? h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '12px' } },
+        offer.qr.map((q) => h('div', { key: q.host, style: { display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' } },
+          h('div', {
+            dangerouslySetInnerHTML: { __html: q.svg },
+            style: { width: '188px', height: '188px', background: '#fff', padding: '6px', borderRadius: '6px' },
+          }),
+          h('span', { style: { fontSize: '12px', color: 'var(--dsw-alias-label-tertiary)' } }, q.host)))) : null,
       h(StatusRow, { label: t('offerCode'), value: offer.code }),
       h(StatusRow, { label: t('offerId'), value: offer.offerId }),
       h('div', null,
@@ -100,6 +108,18 @@ function TabComponent() {
             try { await navigator.clipboard.writeText(offer.uris.join('\n')); setCopied(t('copied')); setTimeout(() => setCopied(''), 1500); } catch { /* clipboard unavailable */ }
           },
         }, copied || t('copy')))) : null,
+    state && state.offer ? h('div', { style: box },
+      h(StatusRow, {
+        label: t('offerTitle'),
+        value: state.offer.phase === 'claimed' ? t('claimedBy') + ' · ' + (state.offer.claimedName ?? '') : t('waitingClaim'),
+      }),
+      h(StatusRow, { label: t('expiresIn'), value: new Date(state.offer.expiresAt).toLocaleTimeString() }),
+      state.offer.phase === 'claimed' ? h('button', {
+        style: primary,
+        onClick: async () => {
+          try { await call('/confirm', { offerId: state.offer.offerId }); refresh(); } catch (e) { setError(String(e)); }
+        },
+      }, t('confirm')) : null) : null,
     h('div', null,
       h('div', { style: { fontWeight: 600, fontSize: '14px', margin: '4px 0' } }, t('devices')),
       !state || !Array.isArray(state.devices) || state.devices.length === 0 ? h('div', { style: { color: 'var(--dsw-alias-label-tertiary)', fontSize: '13px' } }, t('none')) :

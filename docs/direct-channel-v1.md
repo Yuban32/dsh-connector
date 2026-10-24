@@ -87,3 +87,23 @@ dsconnect://l?v=1&h=<host>&p=<port>&o=<offerId>&fp=<hostFp>&c=<code>
 - `host-key.json`：主机 Ed25519 密钥对与指纹（落盘加密为后续加固位）
 - `vault.json`：`{schemaVersion, hostFp, devices[]}`；主机指纹不匹配时自动重置
 - `diagnostics.json`：生命周期事件环形缓冲（不含任何密钥材料）
+
+## 手机侧联调（手机 app 就绪前）
+
+`scripts/phone-client.mjs` 是独立的手机端替身：单文件、只用 Node 内置模块，任何 Node ≥ 22 环境
+可跑（手机上的 Termux，或同一 Wi-Fi 下的第二台电脑）。
+
+1. 桌面：DS Connector 页 →「生成入网邀约」→ 出现二维码与邀约 URI。
+2. 设备端：`node phone-client.mjs '<邀约 URI>' --name my-phone`
+   （URI 来自扫码得到的文本，或直接从桌面页复制）。
+3. 桌面：页面出现「设备已认领 · <名字>」→ 点「确认入网」。
+4. 设备端轮询到 enrolled 后进入 ping 循环；桌面「已入册设备」出现该设备，
+   可用「停用」随时切断其信道权限。
+
+注意：
+
+- URI 里的 host 是桌面机的局域网地址，设备必须与桌面同一网段可达；
+  Windows 首次监听会弹防火墙确认，选「允许」。
+- `t=cert` 模式下码在应用层校验（claim 携带 `c`）；PSK 模式下码经 HKDF 进 TLS，
+  码错直接握手失败。
+- QR 被旁观等价于全部泄露（带外信道固有边界），邀约 5 分钟过期、新邀约顶替旧邀约。

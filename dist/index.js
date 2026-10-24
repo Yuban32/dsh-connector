@@ -9,6 +9,7 @@ import { loadOrCreateHostKeys } from './host/host-keys.js';
 import { DeviceVault } from './devices/vault.js';
 import { Gate } from './enroll/gate.js';
 import { ConsoleServer } from './console/console.js';
+import { qrSvg } from './console/qr.js';
 import { Diagnostics, diagnosticsFile } from './diagnostics.js';
 import { PLUGIN_NAME, PLUGIN_VERSION, OFFER_SCHEME, WIRE_VERSION } from './metadata.js';
 import { createRouter, decodeEnvelope, encodeErr, encodeOk, errorPayload, RpcError } from './channel/rpc.js';
@@ -105,10 +106,20 @@ export async function createRuntime(config, log) {
     const buildUris = (offer) => direct.advertise().map(({ host, port }) => `${OFFER_SCHEME}://l?v=${WIRE_VERSION}&h=${encodeURIComponent(host)}&p=${port}` +
         `&o=${encodeURIComponent(offer.offerId)}&fp=${encodeURIComponent(hostKeys.publicFp)}` +
         `&c=${encodeURIComponent(offer.code)}&t=${direct.mode}`);
-    const openOffer = () => {
+    const openOffer = async () => {
         const offer = gate.openOffer();
         diagnostics.push('console.offer', { offerId: offer.offerId });
-        return { offerId: offer.offerId, code: offer.code, expiresAt: offer.expiresAt, uris: buildUris(offer) };
+        const uris = buildUris(offer);
+        const qr = [];
+        for (const uri of uris) {
+            const host = new URL(uri).searchParams.get('h') ?? '';
+            // The phone cannot reach the desktop's loopback; keep that QR only when
+            // it is the sole advertised endpoint (host-side testing).
+            if (host === '127.0.0.1' && uris.length > 1)
+                continue;
+            qr.push({ host, uri, svg: await qrSvg(uri) });
+        }
+        return { offerId: offer.offerId, code: offer.code, expiresAt: offer.expiresAt, uris, qr };
     };
     const confirm = (offerId) => {
         const device = gate.confirm(offerId);
@@ -135,6 +146,7 @@ export async function createRuntime(config, log) {
             enrolledAt: device.enrolledAt,
             lastSeenAt: device.lastSeenAt,
         })),
+        offer: gate.currentOffer(),
         lastError: direct.lastError,
     });
     const consoleServer = new ConsoleServer({

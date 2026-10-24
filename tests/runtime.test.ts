@@ -67,7 +67,7 @@ test('runtime starts ready and stops cleanly', async () => {
 
 test('full enrollment loop over real TLS-PSK', async () => {
   await withRuntime(async (rt, port) => {
-    const offer = rt.openOffer();
+    const offer = await rt.openOffer();
     ok(offer.uris.length >= 1);
     const parts = parseOfferUri(offer.uris.at(-1) as string);
     deepStrictEqual(parts.offerId, offer.offerId);
@@ -118,7 +118,7 @@ test('full enrollment loop over real TLS-PSK', async () => {
 
 test('health endpoint answers inside a PSK connection', async () => {
   await withRuntime(async (rt, port) => {
-    const offer = rt.openOffer();
+    const offer = await rt.openOffer();
     const parts = parseOfferUri(offer.uris.at(-1) as string);
     const response = await pskRequest(
       { host: '127.0.0.1', port, identity: parts.offerId, psk: deriveOfferPsk(offer.code, offer.offerId, rt.hostFp) },

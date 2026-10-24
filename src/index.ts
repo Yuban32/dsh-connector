@@ -10,6 +10,7 @@ import { loadOrCreateHostKeys } from './host/host-keys.js';
 import { DeviceVault } from './devices/vault.js';
 import { Gate } from './enroll/gate.js';
 import { ConsoleServer, ConsoleState } from './console/console.js';
+import { qrSvg } from './console/qr.js';
 import { Diagnostics, diagnosticsFile } from './diagnostics.js';
 import { PLUGIN_NAME, PLUGIN_VERSION, OFFER_SCHEME, WIRE_VERSION } from './metadata.js';
 import { createRouter, decodeEnvelope, encodeErr, encodeOk, errorPayload, RpcError } from './channel/rpc.js';
@@ -30,6 +31,8 @@ export interface OfferPresentation {
   expiresAt: number;
   /** One URI per reachable endpoint; phone-side scans/pastes exactly one. */
   uris: string[];
+  /** Screen-renderable QR per endpoint; loopback is dropped when LAN endpoints exist. */
+  qr: Array<{ host: string; uri: string; svg: string }>;
 }
 
 export interface RuntimeHandles {
@@ -41,7 +44,7 @@ export interface RuntimeHandles {
   console: ConsoleServer;
   diagnostics: Diagnostics;
   state(): ConsoleState;
-  openOffer(): OfferPresentation;
+  openOffer(): Promise<OfferPresentation>;
   confirm(offerId: string): { deviceId: string; name: string };
   suspend(deviceId: string): { deviceId: string; state: string };
   handleChannel(req: ChannelRequest): Promise<ChannelResponse>;
@@ -137,10 +140,19 @@ export async function createRuntime(config: DscConfig, log: DscLogger): Promise<
       `&c=${encodeURIComponent(offer.code)}&t=${direct.mode}`,
     );
 
-  const openOffer = (): OfferPresentation => {
+  const openOffer = async (): Promise<OfferPresentation> => {
     const offer = gate.openOffer();
     diagnostics.push('console.offer', { offerId: offer.offerId });
-    return { offerId: offer.offerId, code: offer.code, expiresAt: offer.expiresAt, uris: buildUris(offer) };
+    const uris = buildUris(offer);
+    const qr: OfferPresentation['qr'] = [];
+    for (const uri of uris) {
+      const host = new URL(uri).searchParams.get('h') ?? '';
+      // The phone cannot reach the desktop's loopback; keep that QR only when
+      // it is the sole advertised endpoint (host-side testing).
+      if (host === '127.0.0.1' && uris.length > 1) continue;
+      qr.push({ host, uri, svg: await qrSvg(uri) });
+    }
+    return { offerId: offer.offerId, code: offer.code, expiresAt: offer.expiresAt, uris, qr };
   };
 
   const confirm = (offerId: string): { deviceId: string; name: string } => {
@@ -170,6 +182,7 @@ export async function createRuntime(config: DscConfig, log: DscLogger): Promise<
       enrolledAt: device.enrolledAt,
       lastSeenAt: device.lastSeenAt,
     })),
+    offer: gate.currentOffer(),
     lastError: direct.lastError,
   });
 

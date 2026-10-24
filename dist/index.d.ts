@@ -19,6 +19,12 @@ export interface OfferPresentation {
     expiresAt: number;
     /** One URI per reachable endpoint; phone-side scans/pastes exactly one. */
     uris: string[];
+    /** Screen-renderable QR per endpoint; loopback is dropped when LAN endpoints exist. */
+    qr: Array<{
+        host: string;
+        uri: string;
+        svg: string;
+    }>;
 }
 export interface RuntimeHandles {
     config: DscConfig;
@@ -29,7 +35,7 @@ export interface RuntimeHandles {
     console: ConsoleServer;
     diagnostics: Diagnostics;
     state(): ConsoleState;
-    openOffer(): OfferPresentation;
+    openOffer(): Promise<OfferPresentation>;
     confirm(offerId: string): {
         deviceId: string;
         name: string;

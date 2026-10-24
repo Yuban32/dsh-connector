@@ -65,7 +65,7 @@ export class ConsoleServer {
                 return this.json(res, 200, this.options.state());
             }
             if (req.method === 'POST' && url === '/offer') {
-                return this.json(res, 200, this.options.openOffer());
+                return this.json(res, 200, await this.options.openOffer());
             }
             if (req.method === 'POST' && url === '/confirm') {
                 const body = await readBody(req);

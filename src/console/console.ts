@@ -1,6 +1,8 @@
 import * as http from 'node:http';
 
 import type { DscLogger } from '../context.js';
+import type { LiveOfferView } from '../enroll/gate.js';
+import type { OfferPresentation } from '../index.js';
 
 export interface ConsoleState {
   plugin: string;
@@ -8,6 +10,7 @@ export interface ConsoleState {
   hostFp: string;
   direct: { status: string; mode: string; port: number; hosts: string[] };
   devices: Array<{ deviceId: string; name: string; state: string; enrolledAt: string; lastSeenAt?: string }>;
+  offer?: LiveOfferView;
   lastError?: string;
 }
 
@@ -15,7 +18,7 @@ export interface ConsoleOptions {
   port: number;
   log: DscLogger;
   state: () => ConsoleState;
-  openOffer: () => { offerId: string; code: string; expiresAt: number; uris: string[] };
+  openOffer: () => Promise<OfferPresentation>;
   confirm: (offerId: string) => { deviceId: string; name: string };
   suspend: (deviceId: string) => { deviceId: string; state: string };
   /** Forensics sink: the client UI forwards renderer slot-entry crashes here. */
@@ -88,7 +91,7 @@ export class ConsoleServer {
         return this.json(res, 200, this.options.state());
       }
       if (req.method === 'POST' && url === '/offer') {
-        return this.json(res, 200, this.options.openOffer());
+        return this.json(res, 200, await this.options.openOffer());
       }
       if (req.method === 'POST' && url === '/confirm') {
         const body = await readBody(req);

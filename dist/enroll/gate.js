@@ -78,6 +78,26 @@ export class Gate {
         }
         return { status: 'expired' };
     }
+    /** The live offer for the management UI, if any (enrolled offers are done). */
+    currentOffer() {
+        for (const offer of this.offers.values()) {
+            const live = this.liveOffer(offer.offerId);
+            if (!live || (live.phase !== 'open' && live.phase !== 'claimed'))
+                continue;
+            if (live.phase === 'claimed' && live.deviceId) {
+                const device = this.vault.get(live.deviceId);
+                return {
+                    offerId: live.offerId,
+                    expiresAt: live.expiresAt,
+                    phase: 'claimed',
+                    claimedName: device?.name,
+                    claimedKeyFp: device?.keyFp,
+                };
+            }
+            return { offerId: live.offerId, expiresAt: live.expiresAt, phase: 'open' };
+        }
+        return undefined;
+    }
     confirm(offerId) {
         const offer = this.liveOffer(offerId);
         if (!offer?.deviceId)

@@ -1,4 +1,6 @@
 import type { DscLogger } from '../context.js';
+import type { LiveOfferView } from '../enroll/gate.js';
+import type { OfferPresentation } from '../index.js';
 export interface ConsoleState {
     plugin: string;
     version: string;
@@ -16,18 +18,14 @@ export interface ConsoleState {
         enrolledAt: string;
         lastSeenAt?: string;
     }>;
+    offer?: LiveOfferView;
     lastError?: string;
 }
 export interface ConsoleOptions {
     port: number;
     log: DscLogger;
     state: () => ConsoleState;
-    openOffer: () => {
-        offerId: string;
-        code: string;
-        expiresAt: number;
-        uris: string[];
-    };
+    openOffer: () => Promise<OfferPresentation>;
     confirm: (offerId: string) => {
         deviceId: string;
         name: string;
