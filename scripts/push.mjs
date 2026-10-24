@@ -1,0 +1,66 @@
+#!/usr/bin/env node
+/**
+ * Build + reinstall into the harness profile, using the harness's own pnpm.
+ *
+ * `file:` installs are copies (not links), so after every code change the
+ * profile's copy must be refreshed — this script is the one-command loop:
+ *
+ *   pnpm push          # build + reinstall, then restart the harness app
+ *
+ * The harness location is auto-detected; override with DSC_HARNESS_DIR.
+ */
+import { existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { homedir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const projectDir = dirname(dirname(fileURLToPath(import.meta.url)));
+const profileDir = join(homedir(), '.dsh', 'profiles', 'desktop');
+
+const harnessCandidates = [
+  process.env['DSC_HARNESS_DIR'],
+  'J:/Development/Program Files/Deepseek Harness',
+  'C:/Program Files/Deepseek Harness',
+  'C:/Program Files (x86)/Deepseek Harness',
+].filter(Boolean);
+
+function harnessPnpm() {
+  for (const base of harnessCandidates) {
+    const pnpm = join(base, 'resources', 'runtime', 'primary-runtime', 'dependencies', 'pnpm', 'bin', 'pnpm.cjs');
+    if (existsSync(pnpm)) return pnpm;
+  }
+  return undefined;
+}
+
+function run(cmd, args, opts = {}) {
+  // .cmd/.bat shims require shell mode on Windows (Node >= 18.20 spawns them
+  // with EINVAL otherwise).
+  const needsShell = process.platform === 'win32' && /\.cmd$/i.test(cmd);
+  const result = spawnSync(cmd, args, { stdio: 'inherit', shell: needsShell, ...opts });
+  if (result.status !== 0) {
+    console.error(`\n[push] command failed (exit ${result.status}): ${cmd} ${args.join(' ')}`);
+    process.exit(result.status ?? 1);
+  }
+}
+
+if (!existsSync(profileDir)) {
+  console.error(`[push] harness profile not found: ${profileDir}`);
+  process.exit(1);
+}
+
+console.log('[push] 1/2 building...');
+run(process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', ['build'], { cwd: projectDir });
+
+const pnpm = harnessPnpm();
+console.log(`[push] 2/2 reinstalling into profile (${pnpm ? 'harness pnpm' : 'system pnpm'})...`);
+if (pnpm) {
+  run(process.execPath, [pnpm, 'add', `file:${projectDir}`], { cwd: profileDir });
+} else {
+  console.warn('[push] harness pnpm not found — falling back to system pnpm (store-version conflicts are likely).');
+  console.warn('[push] set DSC_HARNESS_DIR to your harness install dir to use the bundled pnpm.');
+  run(process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', ['add', `file:${projectDir}`], { cwd: profileDir });
+}
+
+console.log('\n[push] done. Restart the DeepSeek Harness app to load the new build,');
+console.log('[push] then verify: curl http://127.0.0.1:28471/state  (or: pnpm smoke)');

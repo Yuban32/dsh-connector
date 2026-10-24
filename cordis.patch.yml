@@ -1,0 +1,5 @@
+# Bundle self-insertion patch. Applied by the host when this package is loaded
+# as a dsh profile bundle (see package.json "dsh.bundle.patch").
+- insert:
+    - id: ds-connector
+      name: '@ds-connector/connector'
