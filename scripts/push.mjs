@@ -2,10 +2,10 @@
 /**
  * Build + reinstall into the harness profile, using the harness's own pnpm.
  *
- * `file:` installs are copies (not links), so after every code change the
- * profile's copy must be refreshed — this script is the one-command loop:
+ * The install is a `link:` — the profile references this repo in place, so a
+ * code change only needs a rebuild (this script), never a reinstall:
  *
- *   pnpm push          # build + reinstall, then restart the harness app
+ *   pnpm push          # build + (re)link, then restart the harness app
  *
  * The harness location is auto-detected; override with DSC_HARNESS_DIR.
  */
@@ -56,11 +56,11 @@ run(process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', ['build'], { cwd: projec
 const pnpm = harnessPnpm();
 console.log(`[push] 2/2 reinstalling into profile (${pnpm ? 'harness pnpm' : 'system pnpm'})...`);
 if (pnpm) {
-  run(process.execPath, [pnpm, 'add', `file:${projectDir}`], { cwd: profileDir });
+  run(process.execPath, [pnpm, 'add', `link:${projectDir}`], { cwd: profileDir });
 } else {
   console.warn('[push] harness pnpm not found — falling back to system pnpm (store-version conflicts are likely).');
   console.warn('[push] set DSC_HARNESS_DIR to your harness install dir to use the bundled pnpm.');
-  run(process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', ['add', `file:${projectDir}`], { cwd: profileDir });
+  run(process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', ['add', `link:${projectDir}`], { cwd: profileDir });
 }
 
 // Keep the bundle registered: installs from other sources (GitHub URL, UI)

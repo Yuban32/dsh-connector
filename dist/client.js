@@ -116,7 +116,11 @@ function apply(ctx) {
   }, TabComponent));
 }
 
-const inject = [];
+// Cordis service axis: apply() reads ctx.slots, so the entry must declare the
+// service — an undeclared ctx.slots access throws "cannot get property
+// \"slots\" without inject" and the fiber lands in FAILED ("web boot: ... did
+// not activate").
+const inject = ['slots'];
 exports.apply = apply;
 exports.inject = inject;
 
