@@ -100,12 +100,24 @@ Cordis 节点 config 在 profile 的 `cordis.patch.yml` 里按 id 覆盖：
 
 ## 卸载
 
+UI 卸载（内置插件页）与手动步骤等效，但语义上有三点要知道：
+
+- **UI 卸载不实时卸载渲染进程入口**：依赖、bundles 登记、patch 禁用当场完成，
+  但 tab 要**重启 harness 后才消失**（web entry 不做运行中卸载）。
+- 卸载后 profile 的 `cordis.patch.yml` 会留下 `- id: ds-connector` + `disabled: true`。
+  `pnpm push` 检测到它会拒绝执行（避免把已卸载的入口悄悄装回去）；确认要装回时在
+  UI 里重新启用，或设 `DSC_PUSH_FORCE=1`。
+- UI 卸载对 `link:` 安装不清 `node_modules/@ds-connector` 符号链接（残留无害但建议清掉）。
+
+手动卸载（最彻底）：
+
 ```bash
 cd ~/.dsh/profiles/desktop
 pnpm remove "@ds-connector/connector"
 # 手动从 package.json 的 dsh.profile.bundles 删除 "@ds-connector/connector"
-# 可选: rm -rf .ds-connector
+# 可选: rm -rf .ds-connector     # 数据目录（设备册、密钥）
 # 可选: mv pnpm-lock.yaml.bak-ds-connector pnpm-lock.yaml
+# 可选: rm -rf node_modules/@ds-connector   # link: 安装的符号链接残留
 # 重启 DeepSeek Harness
 ```
 

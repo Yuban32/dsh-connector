@@ -50,6 +50,25 @@ if (!existsSync(profileDir)) {
   process.exit(1);
 }
 
+// The harness UI records an uninstall/disable as a `disabled: true` patch
+// entry for our plugin record id in the profile's cordis.patch.yml. Respect
+// that decision: re-registering the bundle here would silently resurrect an
+// entry the user explicitly removed (the UI does not live-unload web entries,
+// so a resurrected tab only becomes visible after a restart — very confusing).
+const patchFile = join(profileDir, 'cordis.patch.yml');
+const patchText = existsSync(patchFile) ? readFileSync(patchFile, 'utf8') : '';
+const disabledEntry = patchText
+  .split(/^- /m)
+  .slice(1)
+  .some((entry) => /id:\s*['"]?ds-connector\b/.test(entry) && /disabled:\s*true/.test(entry));
+if (disabledEntry && process.env['DSC_PUSH_FORCE'] !== '1') {
+  console.error('[push] profile patch marks "ds-connector" disabled — the plugin was uninstalled');
+  console.error('[push] or disabled in the harness UI. Reinstalling would undo that decision.');
+  console.error('[push] re-enable it in the UI (or drop the disabled entry from the profile');
+  console.error('[push] cordis.patch.yml), or run with DSC_PUSH_FORCE=1 to push anyway.');
+  process.exit(1);
+}
+
 console.log('[push] 1/2 building...');
 run(process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', ['build'], { cwd: projectDir });
 
