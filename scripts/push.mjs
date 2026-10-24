@@ -9,7 +9,7 @@
  *
  * The harness location is auto-detected; override with DSC_HARNESS_DIR.
  */
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 
 const projectDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const profileDir = join(homedir(), '.dsh', 'profiles', 'desktop');
+const PKG_NAME = '@ds-connector/connector';
 
 const harnessCandidates = [
   process.env['DSC_HARNESS_DIR'],
@@ -62,5 +63,17 @@ if (pnpm) {
   run(process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', ['add', `file:${projectDir}`], { cwd: profileDir });
 }
 
+// Keep the bundle registered: installs from other sources (GitHub URL, UI)
+// can drop our entry from dsh.profile.bundles; push always restores it.
+const pkgFile = join(profileDir, 'package.json');
+const profilePkg = JSON.parse(readFileSync(pkgFile, 'utf8'));
+const bundles = profilePkg?.dsh?.profile?.bundles;
+if (Array.isArray(bundles) && !bundles.includes(PKG_NAME)) {
+  bundles.push(PKG_NAME);
+  writeFileSync(pkgFile, JSON.stringify(profilePkg, null, 2) + '\n');
+  console.log(`[push] re-registered ${PKG_NAME} in dsh.profile.bundles`);
+}
+
 console.log('\n[push] done. Restart the DeepSeek Harness app to load the new build,');
 console.log('[push] then verify: curl http://127.0.0.1:28471/state  (or: pnpm smoke)');
+console.log('[push] if the entry shows disabled in the UI, enable it there once.');

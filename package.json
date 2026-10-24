@@ -1,6 +1,6 @@
 {
   "name": "@ds-connector/connector",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "DS Connector — phone enrollment plugin for the DeepSeek Harness desktop app.",
   "type": "module",
   "main": "./dist/index.js",

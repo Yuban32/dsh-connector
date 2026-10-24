@@ -15,7 +15,7 @@ const banner = [
   '    var module = { exports: {} };',
   '    var exports = module.exports;',
 ].join('\n');
-const footer = '  return module.exports;\n});';
+const footer = '  return module.exports;\n  }\n});';
 
 mkdirSync('dist/client', { recursive: true });
 const source = readFileSync('client/index.js', 'utf8');
