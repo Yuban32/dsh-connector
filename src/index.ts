@@ -176,7 +176,11 @@ export async function createRuntime(config: DscConfig, log: DscLogger): Promise<
   const consoleServer = new ConsoleServer({ port: config.consolePort, log, state, openOffer, confirm, suspend });
   await consoleServer.start();
 
-  diagnostics.push('runtime.start', { port: direct.actualPort(), consolePort: consoleServer.port });
+  diagnostics.push('runtime.start', {
+    port: direct.actualPort(),
+    consolePort: consoleServer.port,
+    mode: direct.mode,
+  });
 
   const close = async (): Promise<void> => {
     diagnostics.push('runtime.stop');

@@ -25,10 +25,17 @@ export function asLogger(ctx: DscPluginContext | undefined, fallback: DscLogger 
   return ctx?.logger ?? fallback;
 }
 
-/** Register cleanup with the host when possible; always safe to call. */
+/**
+ * Register cleanup with the host when possible; always safe to call.
+ *
+ * Cordis `effect(fn)` executes fn IMMEDIATELY and treats its return value as
+ * the disposer — so the callback returns `cleanup` without calling it. If a
+ * host ever uses call-at-dispose semantics instead, the returned function is
+ * merely ignored and the process-exit hook still covers us.
+ */
 export function onDispose(ctx: DscPluginContext | undefined, cleanup: () => void): void {
   try {
-    ctx?.effect?.(() => cleanup());
+    ctx?.effect?.(() => cleanup);
   } catch {
     // Cleanup hook shape is host-defined; fall through to the process hook.
   }
