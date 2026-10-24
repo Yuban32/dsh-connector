@@ -13,7 +13,7 @@ function tempHome(tag: string): string {
 test('installedProfileRoot finds the profile holding this package', () => {
   const home = tempHome('hit');
   const profile = join(home, '.dsh', 'profiles', 'desktop');
-  mkdirSync(join(profile, 'node_modules', '@ds-connector', 'connector'), { recursive: true });
+  mkdirSync(join(profile, 'node_modules', '@dsh-connector', 'connector'), { recursive: true });
   try {
     deepStrictEqual(installedProfileRoot(home), profile);
   } finally {

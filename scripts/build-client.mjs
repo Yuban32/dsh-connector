@@ -10,7 +10,7 @@ import { readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'node:fs';
 
 const banner = [
   'window.__ModuleLoader__.load({',
-  '  id: "@ds-connector/connector",',
+  '  id: "@dsh-connector/connector",',
   '  factory: (require) => {',
   '    var module = { exports: {} };',
   '    var exports = module.exports;',
@@ -21,6 +21,6 @@ mkdirSync('dist/client', { recursive: true });
 const source = readFileSync('client/index.js', 'utf8');
 writeFileSync('dist/client.js', banner + '\n' + source + '\n' + footer);
 
-// Handwritten type surface for `@ds-connector/connector/client`.
+// Handwritten type surface for `@dsh-connector/connector/client`.
 copyFileSync('client/index.d.ts', 'dist/client/index.d.ts');
 console.log('client bundle written to dist/client.js');

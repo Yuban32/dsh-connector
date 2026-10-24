@@ -29,7 +29,7 @@ cp pnpm-lock.yaml pnpm-lock.yaml.bak-ds-connector
 #    （本地 pnpm 10 会因 store v10/v11 冲突报错；file: 是拷贝，改码后需重装）
 node "J:/Development/Program Files/Deepseek Harness/resources/runtime/primary-runtime/dependencies/pnpm/bin/pnpm.cjs" add "file:J:/Development/HarmonyOS/ds-connector"
 
-# 4. 编辑 ~/.dsh/profiles/desktop/package.json，把 "@ds-connector/connector"
+# 4. 编辑 ~/.dsh/profiles/desktop/package.json，把 "@dsh-connector/connector"
 #    加入 "dsh".profile.bundles 数组（保留既有条目；默认端口不同，可共存）
 
 # 5. 重启 DeepSeek Harness
@@ -53,7 +53,7 @@ git push
 
 ```bash
 # 清掉旧拷贝（harness 关闭状态）
-Remove-Item -Recurse -Force "$env:USERPROFILE\.dsh\profiles\desktop\node_modules\@ds-connector"
+Remove-Item -Recurse -Force "$env:USERPROFILE\.dsh\profiles\desktop\node_modules\@dsh-connector"
 # 从 GitHub URL 重装（在 profile 目录下，用 harness 自带 pnpm）
 node "<harness>/resources/runtime/primary-runtime/dependencies/pnpm/bin/pnpm.cjs" add <github 用户>/<仓库>
 # 重启 harness，curl /state 里的 version 应为新版本号
@@ -117,11 +117,11 @@ UI 卸载（内置插件页）与手动步骤等效，语义上有几点要知�
 
 ```bash
 cd ~/.dsh/profiles/desktop
-pnpm remove "@ds-connector/connector"
-# 手动从 package.json 的 dsh.profile.bundles 删除 "@ds-connector/connector"
+pnpm remove "@dsh-connector/connector"
+# 手动从 package.json 的 dsh.profile.bundles 删除 "@dsh-connector/connector"
 # 可选: rm -rf .ds-connector     # 数据目录（设备册、密钥）
 # 可选: mv pnpm-lock.yaml.bak-ds-connector pnpm-lock.yaml
-# 可选: rm -rf node_modules/@ds-connector   # link: 安装的符号链接残留
+# 可选: rm -rf node_modules/@dsh-connector   # link: 安装的符号链接残留
 # 重启 DeepSeek Harness
 ```
 

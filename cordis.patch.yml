@@ -2,4 +2,4 @@
 # as a dsh profile bundle (see package.json "dsh.bundle.patch").
 - insert:
     - id: ds-connector
-      name: '@ds-connector/connector'
+      name: '@dsh-connector/connector'

@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 /**
  * The host profile root is a pnpm workspace: walking up from this compiled
- * file (`<root>/node_modules/@ds-connector/connector/dist/paths.js`) the first
+ * file (`<root>/node_modules/@dsh-connector/connector/dist/paths.js`) the first
  * directory holding `pnpm-workspace.yaml` is the profile.
  *
  * That walk fails under symlinked installs (`link:` resolves `import.meta.url`
@@ -34,7 +34,7 @@ export function installedProfileRoot(home = homedir()) {
         if (!entry.isDirectory())
             continue;
         const candidate = join(profilesDir, entry.name);
-        if (existsSync(join(candidate, 'node_modules', '@ds-connector', 'connector')))
+        if (existsSync(join(candidate, 'node_modules', '@dsh-connector', 'connector')))
             return candidate;
     }
     return undefined;

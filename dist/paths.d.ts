@@ -1,6 +1,6 @@
 /**
  * The host profile root is a pnpm workspace: walking up from this compiled
- * file (`<root>/node_modules/@ds-connector/connector/dist/paths.js`) the first
+ * file (`<root>/node_modules/@dsh-connector/connector/dist/paths.js`) the first
  * directory holding `pnpm-workspace.yaml` is the profile.
  *
  * That walk fails under symlinked installs (`link:` resolves `import.meta.url`

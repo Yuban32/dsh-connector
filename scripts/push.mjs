@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 
 const projectDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const profileDir = join(homedir(), '.dsh', 'profiles', 'desktop');
-const PKG_NAME = '@ds-connector/connector';
+const PKG_NAME = '@dsh-connector/connector';
 
 const harnessCandidates = [
   process.env['DSC_HARNESS_DIR'],
