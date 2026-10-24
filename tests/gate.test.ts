@@ -89,3 +89,14 @@ test('vault resets when the host fingerprint changes', () => {
   const foreign = DeviceVault.load(dir, 'ed25519:different-host-fp');
   deepStrictEqual(foreign.list().length, 0);
 });
+
+test('verifyOfferCode accepts only the live offer with the right code', () => {
+  const { gate } = makeGate();
+  const offer = gate.openOffer();
+  ok(gate.verifyOfferCode(offer.offerId, offer.code));
+  ok(gate.verifyOfferCode(offer.offerId, offer.code.toLowerCase()));
+  ok(!gate.verifyOfferCode(offer.offerId, 'XXXXXXXX'));
+  ok(!gate.verifyOfferCode('off_missing', offer.code));
+  gate.claim(offer.offerId, 'device'); // no longer 'open'
+  ok(!gate.verifyOfferCode(offer.offerId, offer.code));
+});

@@ -3,7 +3,7 @@
 /** Cordis diagnostic label (the plugin's `name` export). */
 export const PLUGIN_NAME = 'DS Connector';
 
-export const PLUGIN_VERSION = '0.1.3';
+export const PLUGIN_VERSION = '0.1.4';
 
 /** Version of the enrollment/device wire protocol spoken on the channel. */
 export const WIRE_VERSION = 1;

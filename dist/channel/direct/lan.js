@@ -1,7 +1,7 @@
 import * as http from 'node:http';
 import * as os from 'node:os';
 import * as tls from 'node:tls';
-import { PSK_CIPHERS } from './ciphers.js';
+import { PSK_CIPHERS, PSK_CIPHERS_BROAD } from './ciphers.js';
 const MAX_BODY_BYTES = 64 * 1024;
 /** Route shape: `/rpc/<identity>` where identity is an offerId or deviceId. */
 export function extractIdentity(path) {
@@ -9,47 +9,53 @@ export function extractIdentity(path) {
     return match?.[1];
 }
 /**
- * LAN channel: HTTP over a certificate-less TLS 1.2 PSK connection.
+ * LAN channel with a TLS mode ladder.
  *
- * Every socket must complete a PSK handshake before any HTTP byte flows, so
- * possession of the offer code (or a device token) gates the entire endpoint —
- * there is no unauthenticated surface on this port. One 0.0.0.0 listener serves
- * all interfaces; `advertise()` enumerates usable addresses.
+ * - `psk`/`psk-broad`: certificate-less TLS 1.2 pre-shared keys — the entire
+ *   port has no unauthenticated surface; possession of the offer code (or a
+ *   device token) gates everything.
+ * - `cert` fallback: some runtimes (Electron's BoringSSL-backed node:tls)
+ *   reject PSK suites at cipher-list parse time, so when every PSK mode fails
+ *   to construct, this mode serves a normal self-signed certificate and the
+ *   enrollment code moves to an in-band check (gate.verifyOfferCode).
+ *
+ * The ladder runs at serve() time: the first mode whose server constructs and
+ * listens wins. EADDRINUSE short-circuits to `busy` (port conflict, not mode).
  */
 export class DirectChannel {
     kind = 'direct';
     status = 'stopped';
     lastError;
+    /** The mode that actually won the ladder ('' until serve() succeeds). */
+    mode = '';
     port;
     pskForIdentity;
+    loadTlsCert;
     log;
     onClientRejected;
-    rejectedSince = 0;
-    rejectedCount = 0;
-    tlsServer;
-    httpServer;
+    preferredModes;
+    disabledModes;
     sockets = new Set();
     handler;
+    tlsServer;
+    httpServer;
+    rejectedSince = 0;
+    rejectedCount = 0;
     constructor(options) {
         this.port = options.port;
         this.pskForIdentity = options.pskForIdentity;
+        this.loadTlsCert = options.loadTlsCert;
         this.log = options.log ?? (() => { });
         this.onClientRejected = options.onClientRejected;
-    }
-    /** Report rejected handshakes at most once per minute, with a count. */
-    rejectSeen(reason) {
-        const now = Date.now();
-        this.rejectedCount += 1;
-        if (now - this.rejectedSince < 60_000)
-            return;
-        this.rejectedSince = now;
-        this.onClientRejected?.(`rejected handshakes: ${this.rejectedCount}x, last: ${reason}`);
-        this.rejectedCount = 0;
+        this.preferredModes = options.preferredModes ?? ['psk', 'psk-broad', 'cert'];
+        this.disabledModes = options.disabledModes ?? [];
     }
     advertise() {
         const hosts = [];
         for (const list of Object.values(os.networkInterfaces())) {
             for (const entry of list ?? []) {
+                if (entry === null)
+                    continue;
                 if (entry.family === 'IPv4' && !entry.internal)
                     hosts.push(entry.address);
             }
@@ -68,8 +74,51 @@ export class DirectChannel {
         this.handler = handler;
         const httpServer = http.createServer((req, res) => void this.dispatch(req, res));
         this.httpServer = httpServer;
-        const tlsServer = tls.createServer({
-            pskCallback: (_socket, identity) => {
+        const attempted = [];
+        for (const mode of this.preferredModes) {
+            const tlsOptions = await this.tlsOptionsFor(mode);
+            if (!tlsOptions)
+                continue;
+            attempted.push(mode);
+            const outcome = await this.listenWith(mode, tlsOptions, httpServer);
+            if (outcome === 'listening') {
+                this.status = 'ready';
+                this.mode = mode;
+                this.lastError = undefined;
+                this.log('info', `direct channel listening on port ${this.actualPort()} (mode: ${mode})`);
+                return;
+            }
+            if (outcome === 'busy') {
+                this.status = 'busy';
+                this.lastError = 'port already in use';
+                this.log('error', `direct channel start failed: ${this.lastError}`);
+                return;
+            }
+            // 'mode-failed' — fall through to the next mode in the ladder.
+        }
+        this.status = 'error';
+        this.lastError = `no TLS mode succeeded (tried: ${attempted.join(', ') || 'none'})`;
+        this.log('error', `direct channel start failed: ${this.lastError}`);
+    }
+    async tlsOptionsFor(mode) {
+        if (this.disabledModes.includes(mode))
+            return undefined;
+        if (mode === 'cert') {
+            if (!this.loadTlsCert)
+                return undefined;
+            try {
+                const { certPem, keyPem } = await this.loadTlsCert();
+                return { cert: certPem, key: keyPem, honorCipherOrder: true };
+                // Default ECDHE cipher list; normal certificate handshake.
+            }
+            catch (error) {
+                this.log('warn', `tls cert load failed: ${error instanceof Error ? error.message : 'unknown'}`);
+                return undefined;
+            }
+        }
+        const ciphers = mode === 'psk' ? PSK_CIPHERS : PSK_CIPHERS_BROAD;
+        return {
+            pskCallback: (socket, identity) => {
                 try {
                     return this.pskForIdentity(identity) ?? null;
                 }
@@ -78,48 +127,61 @@ export class DirectChannel {
                     return null;
                 }
             },
-            ciphers: PSK_CIPHERS,
+            ciphers,
             honorCipherOrder: true,
             minVersion: 'TLSv1.2',
             maxVersion: 'TLSv1.2',
-        }, (socket) => {
-            this.sockets.add(socket);
-            socket.on('close', () => this.sockets.delete(socket));
-            socket.on('error', (error) => {
-                // TLS alert from a client without the right PSK (browser probes,
-                // port scanners) — expected by design; keep one trace per minute.
-                this.rejectSeen(error.message);
-                this.log('debug', `client handshake rejected: ${error.message}`);
-            });
-            // Hand the raw TLS socket to the HTTP server as a plain connection.
-            httpServer.emit('connection', socket);
-        });
-        this.tlsServer = tlsServer;
-        await new Promise((resolve) => {
+        };
+    }
+    listenWith(mode, tlsOptions, httpServer) {
+        return new Promise((resolve) => {
+            let tlsServer;
+            try {
+                tlsServer = new tls.Server(tlsOptions, (socket) => {
+                    this.sockets.add(socket);
+                    socket.on('close', () => this.sockets.delete(socket));
+                    socket.on('error', (error) => {
+                        this.rejectSeen(error.message);
+                        this.log('debug', `client handshake rejected: ${error.message}`);
+                    });
+                    // Hand the raw TLS socket to the HTTP server as a plain connection.
+                    httpServer.emit('connection', socket);
+                });
+            }
+            catch (error) {
+                // Cipher-list parse failure (e.g. BoringSSL without PSK suites).
+                this.log('warn', `mode ${mode} rejected: ${error instanceof Error ? error.message : 'unknown'}`);
+                resolve('mode-failed');
+                return;
+            }
+            this.tlsServer = tlsServer;
             const onError = (error) => {
                 tlsServer.removeListener('listening', onListening);
                 if (error.code === 'EADDRINUSE') {
-                    this.status = 'busy';
-                    this.lastError = 'port already in use';
+                    resolve('busy');
                 }
                 else {
-                    this.status = 'error';
-                    this.lastError = error.message;
+                    resolve('mode-failed');
                 }
-                this.log('error', `direct channel start failed: ${error.message}`);
-                resolve();
             };
             const onListening = () => {
                 tlsServer.removeListener('error', onError);
-                this.status = 'ready';
-                this.lastError = undefined;
-                this.log('info', `direct channel listening on port ${this.actualPort()}`);
-                resolve();
+                resolve('listening');
             };
             tlsServer.once('error', onError);
             tlsServer.once('listening', onListening);
             tlsServer.listen(this.port, '0.0.0.0');
         });
+    }
+    /** Report rejected handshakes at most once per minute, with a count. */
+    rejectSeen(reason) {
+        const now = Date.now();
+        this.rejectedCount += 1;
+        if (now - this.rejectedSince < 60_000)
+            return;
+        this.rejectedSince = now;
+        this.onClientRejected?.(`${this.rejectedCount}x, last: ${reason}`);
+        this.rejectedCount = 0;
     }
     async close() {
         const tlsServer = this.tlsServer;
@@ -134,7 +196,6 @@ export class DirectChannel {
         await new Promise((resolve) => {
             tlsServer.close(() => resolve());
             tlsServer.closeAllConnections?.();
-            // The HTTP server never listened on its own; just release its resources.
             try {
                 this.httpServer?.closeAllConnections?.();
                 this.httpServer?.close(() => resolve());
@@ -143,7 +204,6 @@ export class DirectChannel {
                 resolve();
             }
             this.httpServer = undefined;
-            // Fallback resolve in case neither callback fires.
             setTimeout(resolve, 500).unref();
         });
     }

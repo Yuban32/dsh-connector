@@ -5,6 +5,7 @@ export interface ConsoleState {
     hostFp: string;
     direct: {
         status: string;
+        mode: string;
         port: number;
         hosts: string[];
     };
@@ -15,7 +16,6 @@ export interface ConsoleState {
         enrolledAt: string;
         lastSeenAt?: string;
     }>;
-    pendingOfferId?: string;
     lastError?: string;
 }
 export interface ConsoleOptions {

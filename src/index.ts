@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { loadOrCreateTlsCert } from './channel/direct/cert-identity.js';
 import { writeJsonFileAtomic } from './storage/json-file.js';
 import { asLogger, DscLogger, DscPluginContext, onDispose } from './context.js';
 import { resolveConfig, DscConfig } from './config.js';
@@ -70,6 +71,7 @@ export async function createRuntime(config: DscConfig, log: DscLogger): Promise<
   const direct = new DirectChannel({
     port: config.port,
     pskForIdentity: (identity) => gate.pskForIdentity(identity),
+    loadTlsCert: () => loadOrCreateTlsCert(dataDir, config.hostName),
     log: (level, message) => log[level](`[direct] ${message}`),
     onClientRejected: (reason) => diagnostics.push('channel.client-rejected', { reason }),
   });
@@ -79,6 +81,11 @@ export async function createRuntime(config: DscConfig, log: DscLogger): Promise<
       const offerId = requireString(params, 'offerId');
       if (offerId !== identity) throw new RpcError('bad-params', 'offerId does not match the channel identity');
       if (!gate.isOfferIdentity(identity)) throw new RpcError('unknown-offer', 'no open offer for this identity');
+      // Certificate mode cannot prove the code at the TLS layer, so the claim
+      // must present it in-band; PSK modes have already proven it via KDF.
+      if (direct.mode === 'cert' && !gate.verifyOfferCode(offerId, params['code'])) {
+        throw new RpcError('bad-params', 'offer code missing or wrong');
+      }
       const keyFp = typeof params['keyFp'] === 'string' ? params['keyFp'] : undefined;
       return gate.claim(offerId, String(params['deviceName'] ?? ''), keyFp);
     },
@@ -127,7 +134,7 @@ export async function createRuntime(config: DscConfig, log: DscLogger): Promise<
     direct.advertise().map(({ host, port }) =>
       `${OFFER_SCHEME}://l?v=${WIRE_VERSION}&h=${encodeURIComponent(host)}&p=${port}` +
       `&o=${encodeURIComponent(offer.offerId)}&fp=${encodeURIComponent(hostKeys.publicFp)}` +
-      `&c=${encodeURIComponent(offer.code)}`,
+      `&c=${encodeURIComponent(offer.code)}&t=${direct.mode}`,
     );
 
   const openOffer = (): OfferPresentation => {
@@ -152,6 +159,7 @@ export async function createRuntime(config: DscConfig, log: DscLogger): Promise<
     hostFp: hostKeys.publicFp,
     direct: {
       status: direct.status,
+      mode: direct.mode,
       port: direct.actualPort(),
       hosts: direct.advertise().map((endpoint) => endpoint.host),
     },

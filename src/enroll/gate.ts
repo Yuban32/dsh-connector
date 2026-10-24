@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 
 import { DeviceRecord, DeviceVault, newDeviceId, newDeviceToken } from '../devices/vault.js';
-import { generateCode } from './codes.js';
+import { generateCode, normalizeCode } from './codes.js';
 import { deriveDevicePsk, deriveOfferPsk } from './psk.js';
 
 export type GatePhase = 'open' | 'claimed' | 'enrolled' | 'closed';
@@ -147,6 +147,16 @@ export class Gate {
   /** True when the identity is a live offer id usable as a channel identity. */
   isOfferIdentity(identity: string): boolean {
     return this.liveOffer(identity) !== undefined;
+  }
+
+  /**
+   * In-band code check for fallback channels whose TLS layer cannot carry the
+   * code (certificate mode): the claim must present the offer code itself.
+   */
+  verifyOfferCode(offerId: string, code: unknown): boolean {
+    const offer = this.liveOffer(offerId);
+    if (!offer || offer.phase !== 'open') return false;
+    return normalizeCode(String(code ?? '')) === offer.code;
   }
 
   private liveOffer(offerId: string): GateOffer | undefined {

@@ -14,16 +14,11 @@ const consoleBase = (() => {
   return flag >= 0 ? process.argv[flag + 1] : 'http://127.0.0.1:28471';
 })();
 
-const DEVICE_CIPHERS = 'PSK-AES256-GCM-SHA384';
-
-function log(step, detail) {
-  console.log(`[${step}] ${detail ?? ''}`);
-}
-
-function fail(step, error) {
+const log = (step, detail) => console.log(`[${step}] ${detail ?? ''}`);
+const fail = (step, error) => {
   console.error(`[${step}] FAILED: ${error?.message ?? error}`);
   process.exit(1);
-}
+};
 
 async function consoleCall(path, body) {
   const response = await fetch(`${consoleBase}${path}`, {
@@ -39,14 +34,21 @@ async function consoleCall(path, body) {
 function parseOfferUri(uri) {
   const parsed = new URL(uri);
   const q = parsed.searchParams;
-  return { host: q.get('h'), port: Number(q.get('p')), offerId: q.get('o'), hostFp: decodeURIComponent(q.get('fp')), code: q.get('c') };
+  return {
+    host: q.get('h'),
+    port: Number(q.get('p')),
+    offerId: q.get('o'),
+    hostFp: decodeURIComponent(q.get('fp') ?? ''),
+    code: q.get('c'),
+    t: q.get('t') ?? 'psk',
+  };
+}
+function offerPskOf(parsed, codeOverride) {
+  const code = codeOverride ?? parsed.code;
+  return Buffer.from(hkdfSync('sha256', Buffer.from(code), Buffer.from(parsed.offerId), Buffer.from(`ds-connector offer-channel v1 ${parsed.hostFp}`), 32));
 }
 
-function offerPsk(code, offerId, hostFp) {
-  return Buffer.from(hkdfSync('sha256', Buffer.from(code), Buffer.from(offerId), Buffer.from(`ds-connector offer-channel v1 ${hostFp}`), 32));
-}
-
-function devicePsk(token, deviceId, hostFp) {
+function devicePskOf(token, deviceId, hostFp) {
   return Buffer.from(hkdfSync('sha256', Buffer.from(token), Buffer.from(deviceId), Buffer.from(`ds-connector device-channel v1 ${hostFp}`), 32));
 }
 
@@ -58,16 +60,14 @@ async function rpc(endpoint, method, params) {
   return json.result;
 }
 
-/** A TLS-PSK connection must fail when the PSK is wrong or unknown. */
-function expectHandshakeFailure(endpoint) {
-  return pskRequest(endpoint, `/rpc/${endpoint.identity}/health`)
-    .then(() => {
-      throw new Error('handshake unexpectedly succeeded');
-    })
-    .catch((error) => {
-      if (error.message === 'handshake unexpectedly succeeded') throw error;
-      log('neg', `handshake rejected as expected (${error.message})`);
-    });
+async function expectHandshakeFailure(endpoint) {
+  try {
+    await pskRequest(endpoint, `/rpc/${endpoint.identity}/health`);
+  } catch {
+    log('neg', 'handshake rejected as expected');
+    return;
+  }
+  throw new Error('handshake unexpectedly succeeded');
 }
 
 async function main() {
@@ -76,47 +76,35 @@ async function main() {
   if (!state.direct || state.direct.status !== 'ready') {
     throw new Error(`direct channel not ready: ${JSON.stringify(state.direct)}`);
   }
-  log('state', `hostFp=${state.hostFp} port=${state.direct.port}`);
+  log('state', `version=${state.version} mode=${state.direct?.mode} port=${state.direct?.port}`);
 
   log('offer', 'opening enrollment offer');
   const offer = await consoleCall('/offer');
-  log('offer', `offerId=${offer.offerId} code=${offer.code} uris=${offer.uris.length}`);
+  log('offer', `offerId=${offer.offerId} code=${offer.code} mode=${offer.uris?.[0]?.match(/[?&]t=([a-z-]+)/)?.[1]}`);
 
-  const parsed = parseOfferUri(offer.uris.at(-1)); // last entry is 127.0.0.1
+  const parsed = parseOfferUri(offer.uris.at(-1)); // last entry = 127.0.0.1
+  const pskMode = parsed.t !== 'cert';
+
   const deviceKeypair = generateKeyPairSync('ed25519');
   const devicePubRaw = deviceKeypair.publicKey.export({ type: 'spki', format: 'der' }).subarray(12);
   const keyFp = `ed25519:${createHash('sha256').update(devicePubRaw).digest('base64url')}`;
 
-  // Negative: an unknown identity must never complete a handshake.
-  await expectHandshakeFailure({
-    host: parsed.host,
-    port: parsed.port,
-    identity: 'off_does-not-exist',
-    psk: offerPsk(parsed.code, parsed.offerId, parsed.hostFp),
-  });
-  // Negative: a wrong code must never complete a handshake.
-  await expectHandshakeFailure({
-    host: parsed.host,
-    port: parsed.port,
-    identity: parsed.offerId,
-    psk: offerPsk('XXXXXXXX', parsed.offerId, parsed.hostFp),
-  });
+  const endpointFor = (identity, psk) => ({ host: parsed.host, port: parsed.port, identity, psk });
 
-  const offerEndpoint = {
-    host: parsed.host,
-    port: parsed.port,
-    identity: parsed.offerId,
-    psk: offerPsk(parsed.code, parsed.offerId, parsed.hostFp),
-  };
+  if (pskMode) {
+    // Negative: unknown identity must fail the PSK handshake.
+    await expectHandshakeFailure(endpointFor('off_unknown', offerPskOf(parsed)));
+    // Negative: wrong code derives a different PSK — must also fail.
+    await expectHandshakeFailure(endpointFor(parsed.offerId, offerPskOf(parsed, 'XXXXXXXX')));
+  }
 
-  log('claim', 'claiming the offer over the PSK channel');
-  const claim = await rpc(offerEndpoint, 'enroll.claim', {
-    offerId: parsed.offerId,
-    deviceName: 'smoke-device',
-    keyFp,
-  });
+  const offerEndpoint = endpointFor(parsed.offerId, pskMode ? offerPskOf(parsed) : undefined);
+  const claimParams = { offerId: parsed.offerId, deviceName: 'smoke-device', keyFp };
+  if (!pskMode) claimParams.code = parsed.code; // in-band code check in cert mode
+
+  log('claim', 'claiming the offer');
+  const claim = await rpc(offerEndpoint, 'enroll.claim', claimParams);
   if (claim.status !== 'wait-confirm') throw new Error(`claim returned ${claim.status}`);
-  log('claim', 'desktop-side confirmation pending');
 
   const confirmed = await consoleCall('/confirm', { offerId: parsed.offerId });
   log('confirm', `confirmed device ${confirmed.deviceId} (${confirmed.name})`);
@@ -125,21 +113,26 @@ async function main() {
   if (poll.status !== 'enrolled') throw new Error(`poll returned ${poll.status}`);
   log('enroll', `enrolled deviceId=${poll.deviceId}`);
 
-  const deviceEndpoint = {
-    host: parsed.host,
-    port: parsed.port,
-    identity: poll.deviceId,
-    psk: devicePsk(poll.token, poll.deviceId, parsed.hostFp),
-  };
+  const deviceEndpoint = endpointFor(poll.deviceId, pskMode ? devicePskOf(poll.token, poll.deviceId, parsed.hostFp) : undefined);
   const ping = await rpc(deviceEndpoint, 'device.ping', {});
   if (!ping.ok) throw new Error('device.ping did not acknowledge');
-  log('ping', `device channel ok (serverTime=${ping.serverTime})`);
+  log('ping', 'device channel ok');
 
   const suspended = await rpc(deviceEndpoint, 'device.suspend', {});
   log('suspend', `device state=${suspended.state}`);
 
-  await expectHandshakeFailure(deviceEndpoint);
-  log('neg', 'suspended device can no longer connect');
+  if (pskMode) {
+    await expectHandshakeFailure(deviceEndpoint);
+  } else {
+    // Cert mode: suspended devices fail at the RPC layer instead.
+    try {
+      await rpc(deviceEndpoint, 'device.ping', {});
+      throw new Error('suspended device unexpectedly served');
+    } catch (error) {
+      if (String(error.message).includes('unexpectedly served')) throw error;
+      log('neg', `suspended device rejected as expected (${error.message})`);
+    }
+  }
 
   console.log('\nSMOKE PASS: enrollment → confirm → reconnect → suspend all verified.');
 }

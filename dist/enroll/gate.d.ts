@@ -58,6 +58,11 @@ export declare class Gate {
     pskForIdentity(identity: string): Buffer | undefined;
     /** True when the identity is a live offer id usable as a channel identity. */
     isOfferIdentity(identity: string): boolean;
+    /**
+     * In-band code check for fallback channels whose TLS layer cannot carry the
+     * code (certificate mode): the claim must present the offer code itself.
+     */
+    verifyOfferCode(offerId: string, code: unknown): boolean;
     private liveOffer;
 }
 export declare class GateError extends Error {

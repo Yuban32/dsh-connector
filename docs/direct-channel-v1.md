@@ -4,9 +4,12 @@
 
 ## 总览
 
-- 传输：TLS 1.2 + PSK（`TLS_PSK_WITH_AES_256_GCM_SHA384`），**无证书**。整个端口不存在未认证面——任何字节都必须先完成 PSK 握手。
+- 传输（自动降级阶梯，serve 时逐级尝试，以 `/state` 的 `direct.mode` 为准）：
+  1. **psk**：TLS 1.2 + `TLS_PSK_WITH_AES_256_GCM_SHA384`，无证书，码经 HKDF 进 PSK（首选）
+  2. **psk-broad**：加入 128 位 PSK 套件（兼容性尝试）
+  3. **cert**（回退）：普通自签证书 TLS——部分运行时（如 Electron 主进程的 BoringSSL 后端 node:tls）在 cipher 解析阶段直接拒绝 PSK 套件；此模式下**持码证明移到应用层**：`enroll.claim` 必须携带 `code`，服务端经 `verifyOfferCode` 校验（码仍来自带外邀约 URI）
 - 信令：单一 HTTP 路径 `POST /rpc/<identity>`，请求体为 JSON 信封；健康检查 `GET /rpc/<identity>/health`。
-- 身份：`identity` = 邀约 id（入网阶段）或设备 id（重连阶段），同时出现在 URL 与 TLS PSK 身份提示中。
+- 身份：`identity` = 邀约 id（入网阶段）或设备 id（重连阶段），同时出现在 URL 与（PSK 模式的）TLS 身份提示中；邀约 URI 含 `t=<mode>` 告知客户端模式。
 
 ## 邀约（offer）
 

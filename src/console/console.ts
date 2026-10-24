@@ -6,9 +6,8 @@ export interface ConsoleState {
   plugin: string;
   version: string;
   hostFp: string;
-  direct: { status: string; port: number; hosts: string[] };
+  direct: { status: string; mode: string; port: number; hosts: string[] };
   devices: Array<{ deviceId: string; name: string; state: string; enrolledAt: string; lastSeenAt?: string }>;
-  pendingOfferId?: string;
   lastError?: string;
 }
 
